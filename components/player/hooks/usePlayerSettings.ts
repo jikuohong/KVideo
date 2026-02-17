@@ -22,6 +22,11 @@ export function usePlayerSettings() {
             adKeywords: stored.adKeywords,
             fullscreenType: stored.fullscreenType,
             proxyMode: stored.proxyMode,
+            danmakuEnabled: stored.danmakuEnabled,
+            danmakuApiUrl: stored.danmakuApiUrl,
+            danmakuOpacity: stored.danmakuOpacity,
+            danmakuFontSize: stored.danmakuFontSize,
+            danmakuDisplayArea: stored.danmakuDisplayArea,
         };
     });
 
@@ -41,6 +46,11 @@ export function usePlayerSettings() {
                 adKeywords: stored.adKeywords,
                 fullscreenType: stored.fullscreenType,
                 proxyMode: stored.proxyMode,
+                danmakuEnabled: stored.danmakuEnabled,
+                danmakuApiUrl: stored.danmakuApiUrl,
+                danmakuOpacity: stored.danmakuOpacity,
+                danmakuFontSize: stored.danmakuFontSize,
+                danmakuDisplayArea: stored.danmakuDisplayArea,
             });
         });
         return unsubscribe;
@@ -101,6 +111,26 @@ export function usePlayerSettings() {
         updateSetting('proxyMode', value);
     }, [updateSetting]);
 
+    const setDanmakuEnabled = useCallback((value: boolean) => {
+        updateSetting('danmakuEnabled', value);
+    }, [updateSetting]);
+
+    const setDanmakuApiUrl = useCallback((value: string) => {
+        updateSetting('danmakuApiUrl', value);
+    }, [updateSetting]);
+
+    const setDanmakuOpacity = useCallback((value: number) => {
+        updateSetting('danmakuOpacity', Math.max(0.1, Math.min(1, value)));
+    }, [updateSetting]);
+
+    const setDanmakuFontSize = useCallback((value: number) => {
+        updateSetting('danmakuFontSize', value);
+    }, [updateSetting]);
+
+    const setDanmakuDisplayArea = useCallback((value: number) => {
+        updateSetting('danmakuDisplayArea', value);
+    }, [updateSetting]);
+
     return {
         ...settings,
         setAutoNextEpisode,
@@ -114,5 +144,10 @@ export function usePlayerSettings() {
         setAdKeywords,
         setFullscreenType,
         setProxyMode,
+        setDanmakuEnabled,
+        setDanmakuApiUrl,
+        setDanmakuOpacity,
+        setDanmakuFontSize,
+        setDanmakuDisplayArea,
     };
 }
