@@ -15,7 +15,8 @@ const effectiveAdminPassword = ADMIN_PASSWORD || ACCESS_PASSWORD;
 
 interface AccountInfo {
   name: string;
-  role: 'admin' | 'viewer';
+  role: 'super_admin' | 'admin' | 'viewer';
+  customPermissions?: string[];
 }
 
 function getAccountList(): AccountInfo[] {
@@ -23,7 +24,7 @@ function getAccountList(): AccountInfo[] {
 
   // Add admin from ADMIN_PASSWORD
   if (effectiveAdminPassword) {
-    accounts.push({ name: '管理员', role: 'admin' });
+    accounts.push({ name: '超级管理员', role: 'super_admin' });
   }
 
   // Add accounts from ACCOUNTS env var
@@ -35,9 +36,14 @@ function getAccountList(): AccountInfo[] {
         const parts = entry.split(':');
         if (parts.length >= 2) {
           const name = parts[1].trim();
-          const role = parts[2]?.trim() === 'admin' ? 'admin' : 'viewer';
+          const parsedRole = parts[2]?.trim();
+          const role = parsedRole === 'super_admin' ? 'super_admin' : parsedRole === 'admin' ? 'admin' : 'viewer';
+          const perms = parts[3]?.trim();
+          const customPermissions = perms
+            ? perms.split('|').map(p => p.trim()).filter(p => p.length > 0)
+            : undefined;
           if (name) {
-            accounts.push({ name, role });
+            accounts.push({ name, role, ...(customPermissions && customPermissions.length > 0 ? { customPermissions } : {}) });
           }
         }
       });

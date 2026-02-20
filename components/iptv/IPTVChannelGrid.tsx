@@ -2,25 +2,45 @@
 
 /**
  * IPTVChannelGrid - Displays IPTV channels grouped by category with search
+ * Uses pagination to handle large playlists without freezing.
  */
 
 import { useState, useMemo } from 'react';
 import { Icons } from '@/components/ui/Icon';
 import type { M3UChannel } from '@/lib/utils/m3u-parser';
+import type { IPTVSource } from '@/lib/store/iptv-store';
+
+const PAGE_SIZE = 100;
 
 interface IPTVChannelGridProps {
   channels: M3UChannel[];
   groups: string[];
   onSelect: (channel: M3UChannel) => void;
   activeChannel?: M3UChannel | null;
+  channelsBySource?: Record<string, { channels: M3UChannel[]; groups: string[] }>;
+  sources?: IPTVSource[];
 }
 
-export function IPTVChannelGrid({ channels, groups, onSelect, activeChannel }: IPTVChannelGridProps) {
+export function IPTVChannelGrid({ channels, groups, onSelect, activeChannel, channelsBySource, sources }: IPTVChannelGridProps) {
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  const hasMultipleSources = sources && sources.length > 1 && channelsBySource;
+
+  // Get effective channels and groups based on selected source
+  const { effectiveChannels, effectiveGroups } = useMemo(() => {
+    if (!hasMultipleSources || !selectedSourceId) {
+      return { effectiveChannels: channels, effectiveGroups: groups };
+    }
+    const sourceData = channelsBySource[selectedSourceId];
+    if (!sourceData) return { effectiveChannels: channels, effectiveGroups: groups };
+    return { effectiveChannels: sourceData.channels, effectiveGroups: sourceData.groups };
+  }, [channels, groups, hasMultipleSources, selectedSourceId, channelsBySource]);
 
   const filteredChannels = useMemo(() => {
-    let result = channels;
+    let result = effectiveChannels;
 
     if (selectedGroup) {
       result = result.filter((c) => c.group === selectedGroup);
@@ -32,7 +52,25 @@ export function IPTVChannelGrid({ channels, groups, onSelect, activeChannel }: I
     }
 
     return result;
-  }, [channels, selectedGroup, search]);
+  }, [effectiveChannels, selectedGroup, search]);
+
+  // Reset visible count when filter changes
+  const filterKey = `${selectedSourceId}-${selectedGroup}-${search}`;
+  const [lastFilterKey, setLastFilterKey] = useState(filterKey);
+  if (filterKey !== lastFilterKey) {
+    setLastFilterKey(filterKey);
+    setVisibleCount(PAGE_SIZE);
+  }
+
+  // Reset group when source changes
+  const [lastSourceId, setLastSourceId] = useState(selectedSourceId);
+  if (selectedSourceId !== lastSourceId) {
+    setLastSourceId(selectedSourceId);
+    setSelectedGroup(null);
+  }
+
+  const visibleChannels = filteredChannels.slice(0, visibleCount);
+  const hasMore = visibleCount < filteredChannels.length;
 
   if (channels.length === 0) {
     return (
@@ -60,8 +98,48 @@ export function IPTVChannelGrid({ channels, groups, onSelect, activeChannel }: I
         </div>
       </div>
 
+      {/* Channel count */}
+      <div className="text-xs text-[var(--text-color-secondary)]">
+        {filteredChannels.length === effectiveChannels.length
+          ? `共 ${effectiveChannels.length} 个频道`
+          : `${filteredChannels.length} / ${effectiveChannels.length} 个频道`}
+      </div>
+
+      {/* Source Tabs (only when multiple sources) */}
+      {hasMultipleSources && sources && (
+        <div className="flex gap-1.5 flex-wrap">
+          <button
+            onClick={() => setSelectedSourceId(null)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-[var(--radius-2xl)] border transition-all cursor-pointer ${
+              selectedSourceId === null
+                ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-white'
+                : 'bg-[var(--glass-bg)] border-[var(--glass-border)] text-[var(--text-color)] hover:border-[var(--accent-color)]/30'
+            }`}
+          >
+            全部
+          </button>
+          {sources.map((source) => {
+            const sourceData = channelsBySource![source.id];
+            if (!sourceData) return null;
+            return (
+              <button
+                key={source.id}
+                onClick={() => setSelectedSourceId(source.id === selectedSourceId ? null : source.id)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-[var(--radius-2xl)] border transition-all cursor-pointer ${
+                  selectedSourceId === source.id
+                    ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-white'
+                    : 'bg-[var(--glass-bg)] border-[var(--glass-border)] text-[var(--text-color)] hover:border-[var(--accent-color)]/30'
+                }`}
+              >
+                {source.name} ({sourceData.channels.length})
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Group Tabs */}
-      {groups.length > 0 && (
+      {effectiveGroups.length > 0 && (
         <div className="flex gap-1.5 flex-wrap">
           <button
             onClick={() => setSelectedGroup(null)}
@@ -71,10 +149,10 @@ export function IPTVChannelGrid({ channels, groups, onSelect, activeChannel }: I
                 : 'bg-[var(--glass-bg)] border-[var(--glass-border)] text-[var(--text-color)] hover:border-[var(--accent-color)]/30'
             }`}
           >
-            全部 ({channels.length})
+            全部 ({effectiveChannels.length})
           </button>
-          {groups.map((group) => {
-            const count = channels.filter((c) => c.group === group).length;
+          {effectiveGroups.map((group) => {
+            const count = effectiveChannels.filter((c) => c.group === group).length;
             return (
               <button
                 key={group}
@@ -94,7 +172,7 @@ export function IPTVChannelGrid({ channels, groups, onSelect, activeChannel }: I
 
       {/* Channel Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-        {filteredChannels.map((channel, index) => (
+        {visibleChannels.map((channel, index) => (
           <button
             key={`${channel.name}-${index}`}
             onClick={() => onSelect(channel)}
@@ -127,18 +205,39 @@ export function IPTVChannelGrid({ channels, groups, onSelect, activeChannel }: I
                 }`}>
                   {channel.name}
                 </p>
-                {channel.group && (
-                  <p className={`text-[10px] truncate ${
-                    activeChannel?.url === channel.url ? 'text-white/70' : 'text-[var(--text-color-secondary)]'
-                  }`}>
-                    {channel.group}
-                  </p>
-                )}
+                <div className="flex items-center gap-1">
+                  {channel.group && (
+                    <p className={`text-[10px] truncate ${
+                      activeChannel?.url === channel.url ? 'text-white/70' : 'text-[var(--text-color-secondary)]'
+                    }`}>
+                      {channel.group}
+                    </p>
+                  )}
+                  {channel.routes && channel.routes.length > 1 && (
+                    <span className={`text-[9px] px-1 rounded flex-shrink-0 ${
+                      activeChannel?.url === channel.url ? 'bg-white/20 text-white/80' : 'bg-[var(--accent-color)]/10 text-[var(--accent-color)]'
+                    }`}>
+                      {channel.routes.length}线路
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           </button>
         ))}
       </div>
+
+      {/* Load More */}
+      {hasMore && (
+        <div className="text-center py-4">
+          <button
+            onClick={() => setVisibleCount(prev => prev + PAGE_SIZE)}
+            className="px-6 py-2 text-xs bg-[var(--glass-bg)] border border-[var(--glass-border)] rounded-[var(--radius-2xl)] text-[var(--text-color-secondary)] hover:text-[var(--accent-color)] hover:border-[var(--accent-color)]/30 transition-all cursor-pointer"
+          >
+            加载更多 ({filteredChannels.length - visibleCount} 个剩余)
+          </button>
+        </div>
+      )}
 
       {filteredChannels.length === 0 && (
         <div className="text-center py-8 text-sm text-[var(--text-color-secondary)]">

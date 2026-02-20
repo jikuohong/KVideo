@@ -51,6 +51,10 @@ function PlayerContent() {
     return null;
   }
 
+  // Handle auto-fallback when current source is unavailable (defined later, uses ref)
+  const sourceUnavailableRef = useRef<(() => void) | undefined>(undefined);
+  const pendingFallbackRef = useRef(false);
+
   const {
     videoData,
     loading,
@@ -61,7 +65,9 @@ function PlayerContent() {
     setPlayUrl,
     setVideoError,
     fetchVideoDetails,
-  } = useVideoPlayer(videoId, source, episodeParam, isReversed);
+  } = useVideoPlayer(videoId, source, episodeParam, isReversed, useCallback(() => {
+    sourceUnavailableRef.current?.();
+  }, []));
 
   // Parse grouped sources if available
   const [discoveredSources, setDiscoveredSources] = useState<SourceInfo[]>([]);
@@ -94,13 +100,64 @@ function PlayerContent() {
         pic: videoData?.vod_pic
       });
     }
+
+    // Use current video's poster as fallback pic for sources that don't have one
+    const fallbackPic = videoData?.vod_pic;
+    if (fallbackPic) {
+      sources = sources.map(s => s.pic ? s : { ...s, pic: fallbackPic });
+    }
+
     return sources;
   }, [groupedSourcesParam, source, videoId, videoData?.vod_pic, discoveredSources]);
 
-  // Background fetch alternative sources when none provided
+  // Wire up the source unavailable handler now that groupedSources is defined
+  sourceUnavailableRef.current = () => {
+    const alternatives = groupedSources.filter(s => s.source !== source);
+    if (alternatives.length === 0) {
+      // No alternatives yet — mark pending so we retry when discovered sources arrive
+      pendingFallbackRef.current = true;
+      return;
+    }
+
+    pendingFallbackRef.current = false;
+    const best = [...alternatives].sort((a, b) => {
+      const latA = a.latency ?? Infinity;
+      const latB = b.latency ?? Infinity;
+      return latA - latB;
+    })[0];
+
+    const params = new URLSearchParams();
+    params.set('id', String(best.id));
+    params.set('source', best.source);
+    params.set('title', title || '');
+    if (episodeParam) params.set('episode', episodeParam);
+    if (groupedSourcesParam) params.set('groupedSources', groupedSourcesParam);
+    if (isPremium) params.set('premium', '1');
+    router.replace(`/player?${params.toString()}`, { scroll: false });
+  };
+
+  // Retry pending fallback when discovered sources arrive
+  useEffect(() => {
+    if (pendingFallbackRef.current && discoveredSources.length > 0) {
+      sourceUnavailableRef.current?.();
+    }
+  }, [discoveredSources]);
+
+  // Background fetch alternative sources when none provided or when existing ones lack full info
   const fetchedSourcesRef = useRef(false);
   useEffect(() => {
-    if (groupedSourcesParam || fetchedSourcesRef.current || !title) return;
+    if (fetchedSourcesRef.current || !title) return;
+
+    // Check if existing grouped sources already have full info (pic + latency)
+    let existingSources: SourceInfo[] = [];
+    if (groupedSourcesParam) {
+      try { existingSources = JSON.parse(groupedSourcesParam); } catch {}
+    }
+    // Always fetch alternatives if there's a pending fallback (source unavailable)
+    const hasFullInfo = !pendingFallbackRef.current && existingSources.length > 1 &&
+      existingSources.every(s => s.pic || s.latency !== undefined);
+    if (hasFullInfo) return;
+
     fetchedSourcesRef.current = true;
 
     const settings = settingsStore.getSettings();
@@ -151,6 +208,7 @@ function PlayerContent() {
                     sourceName: match.sourceDisplayName || getSourceName(match.source),
                     latency: match.latency,
                     pic: match.vod_pic,
+                    typeName: match.type_name,
                   });
                   // Update state incrementally
                   setDiscoveredSources([...found]);
@@ -169,6 +227,7 @@ function PlayerContent() {
 
   // Track current source for switching
   const [currentSourceId, setCurrentSourceId] = useState(source);
+  const playerTimeRef = useRef(0);
 
   // Add initial history entry when video data is loaded
   useEffect(() => {
@@ -267,6 +326,7 @@ function PlayerContent() {
                 isPremium={isPremium}
                 videoTitle={videoData?.vod_name || title || ''}
                 episodeName={videoData?.episodes?.[currentEpisode]?.name || ''}
+                externalTimeRef={playerTimeRef}
               />
               <div className="hidden lg:block">
                 <VideoMetadata
@@ -334,12 +394,21 @@ function PlayerContent() {
                       params.set('id', String(newSource.id));
                       params.set('source', newSource.source);
                       params.set('title', title || '');
+                      // Preserve current episode index
+                      params.set('episode', currentEpisode.toString());
+                      // Preserve playback position for seamless source switch
+                      if (playerTimeRef.current > 1) {
+                        params.set('t', Math.floor(playerTimeRef.current).toString());
+                      }
                       // Pass all known sources so switching persists
                       const allSources = groupedSources.length > 0 ? groupedSources : [];
                       if (allSources.length > 1) {
                         params.set('groupedSources', JSON.stringify(allSources));
                       } else if (groupedSourcesParam) {
                         params.set('groupedSources', groupedSourcesParam);
+                      }
+                      if (isPremium) {
+                        params.set('premium', '1');
                       }
                       setCurrentSourceId(newSource.source);
                       router.replace(`/player?${params.toString()}`, { scroll: false });
