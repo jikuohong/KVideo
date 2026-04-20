@@ -11,6 +11,7 @@ import { AccountSettings } from '@/components/settings/AccountSettings';
 import { DisplaySettings } from '@/components/settings/DisplaySettings';
 import { PlayerSettings } from '@/components/settings/PlayerSettings';
 import { SettingsHeader } from '@/components/settings/SettingsHeader';
+import { AppVersionSettings } from '@/components/settings/AppVersionSettings';
 import { UserSourceSettings } from '@/components/settings/UserSourceSettings';
 import { UserDanmakuSettings } from '@/components/settings/UserDanmakuSettings';
 import { PermissionGate } from '@/components/PermissionGate';
@@ -24,6 +25,7 @@ export default function SettingsPage() {
     realtimeLatency,
     searchDisplayMode,
     fullscreenType,
+    seekStepSeconds,
     isAddModalOpen,
     isExportModalOpen,
     isImportModalOpen,
@@ -54,8 +56,11 @@ export default function SettingsPage() {
     handleFullscreenTypeChange,
     proxyMode,
     handleProxyModeChange,
+    handleSeekStepSecondsChange,
     rememberScrollPosition,
+    videoTogetherEnabled,
     handleRememberScrollPositionChange,
+    handleVideoTogetherEnabledChange,
     locale,
     handleLocaleChange,
     danmakuApiUrl,
@@ -66,6 +71,8 @@ export default function SettingsPage() {
     handleDanmakuFontSizeChange,
     danmakuDisplayArea,
     handleDanmakuDisplayAreaChange,
+    blockedCategories,
+    handleBlockedCategoriesChange,
   } = useSettingsPage();
 
   return (
@@ -73,6 +80,8 @@ export default function SettingsPage() {
       <div className="container mx-auto px-4 py-8 max-w-4xl space-y-8">
         {/* Header */}
         <SettingsHeader />
+
+        <AppVersionSettings />
 
         {/* Account Settings */}
         <AccountSettings />
@@ -84,6 +93,10 @@ export default function SettingsPage() {
             onFullscreenTypeChange={handleFullscreenTypeChange}
             proxyMode={proxyMode}
             onProxyModeChange={handleProxyModeChange}
+            seekStepSeconds={seekStepSeconds}
+            onSeekStepSecondsChange={handleSeekStepSecondsChange}
+            videoTogetherEnabled={videoTogetherEnabled}
+            onVideoTogetherEnabledChange={handleVideoTogetherEnabledChange}
             danmakuApiUrl={danmakuApiUrl}
             onDanmakuApiUrlChange={handleDanmakuApiUrlChange}
             danmakuOpacity={danmakuOpacity}
@@ -106,6 +119,8 @@ export default function SettingsPage() {
           onRememberScrollPositionChange={handleRememberScrollPositionChange}
           locale={locale}
           onLocaleChange={handleLocaleChange}
+          blockedCategories={blockedCategories}
+          onBlockedCategoriesChange={handleBlockedCategoriesChange}
         />
 
         {/* Per-User Source Settings (visible to all logged-in users) */}
